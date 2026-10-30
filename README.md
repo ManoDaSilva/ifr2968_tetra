@@ -139,5 +139,6 @@ After that, `-m ber` works with no other changes. Keys ending in `_status` are u
 
 ## Known limits
 
-- `:MEASUre:TXFreq?` is invalid in the digital modes on the 2968, so the script reads the frequency set in the instrument's measurement settings instead. This read is optional: if the 2968 does not answer it, the script prints a warning to stderr and leaves the two frequency fields out. It has not been checked on hardware.
-- The script has not been run against real hardware yet.
+- `:MEASUre:TXFreq?` is invalid in the digital modes on the 2968, so the script reads the frequency set in the instrument's measurement settings instead. This read is optional: if the 2968 does not answer it, the script prints a warning to stderr and leaves the two frequency fields out.
+- Tested on an IFR 2968 (firmware 11.24) through an E5810A. Other instruments in the 2965A/2966A/2967 family share the command set but have not been tried.
+- `timing_error_symbols` can read `invalid` when the 2968 has no timing reference from the unit under test. The other values are still reported.
