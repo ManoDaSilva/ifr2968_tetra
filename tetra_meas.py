@@ -120,8 +120,25 @@ class IFR2968:
         finally:
             self.rm.close()
 
+    def device_errors(self):
+        """Read the instrument error codes (DEVerror?, EXecerror?, Qerror?) after a failure."""
+        out = {}
+        for q in ("DEVerror?", "EXecerror?", "Qerror?"):
+            try:
+                out[q.rstrip("?")] = self.query(q)
+            except Exception:
+                out[q.rstrip("?")] = "no reply"
+        return out
+
     def measure(self, m: Measurement):
-        reply = self.query(m.query)
+        try:
+            reply = self.query(m.query)
+        except Exception as e:
+            try:
+                self.inst.clear()  # VXI-11 device clear, drops the pending query
+            except Exception:
+                pass
+            raise RuntimeError("%s failed (%s). Instrument errors: %s" % (m.query, e, self.device_errors()))
         fields = [x.strip() for x in reply.split(",")]
         return m.parse(fields)
 
@@ -187,6 +204,9 @@ def parse_args(argv=None):
                    help="output format (default json, one object per line)")
     p.add_argument("--status", action="store_true", help="include per-value settled/invalid flags")
     p.add_argument("--idn", action="store_true", help="print *IDN? to stderr before measuring")
+    p.add_argument("--meas-error", choices=["on", "off"],
+                   help="set :MEASError. With off, unmeasurable digital values return a default with "
+                        "status invalid instead of no reply")
     p.add_argument("--timestamp", action="store_true", help="add a UTC timestamp field")
     return p.parse_args(argv)
 
@@ -202,6 +222,8 @@ def main(argv=None):
         if a.idn:
             print(inst.idn(), file=sys.stderr)
         inst.clear()
+        if a.meas_error:
+            inst.write(":MEASError %s" % a.meas_error.upper())
         rows = []
         k = 0
         while a.count == 0 or k < a.count:
