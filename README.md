@@ -33,7 +33,7 @@ python3 tetra_meas.py 192.168.1.50 -a 4
 ```
 
 ```json
-{"tx_frequency_mhz": 390.0123, "freq_error_hz": 40.1, "vector_error_peak_pct": 5.11, "vector_error_rms_pct": 2.01, "residual_carrier_pct": 1.23, "power_profile": "PASS", "timing_error_symbols": 0.0, "burst_power_dbm": 25.1}
+{"tx_set_frequency_mhz": 390.0123, "tx_frequency_mhz": 390.012340, "freq_error_hz": 40.1, "vector_error_peak_pct": 5.11, "vector_error_rms_pct": 2.01, "residual_carrier_pct": 1.23, "power_profile": "PASS", "timing_error_symbols": 0.0, "burst_power_dbm": 25.1}
 ```
 
 The numbers above are examples. They are not from a real instrument.
@@ -62,7 +62,7 @@ Include the settled/invalid flag next to each value:
 python3 tetra_meas.py 192.168.1.50 -a 4 --status
 ```
 
-Only the absolute Tx frequency:
+Only the Tx frequency the 2968 is tuned to:
 
 ```bash
 python3 tetra_meas.py 192.168.1.50 -a 4 -m txfreq
@@ -90,7 +90,8 @@ python3 tetra_meas.py 192.168.1.50 -a 4 -m txfreq
 
 | Field | Unit | Source |
 | --- | --- | --- |
-| `tx_frequency_mhz` | MHz | `:MEASUre:TXFreq?` |
+| `tx_set_frequency_mhz` | MHz | `:SYManual:TXfreq:Controlchan?` (use `-m txfreq_traffic` for the traffic channel) |
+| `tx_frequency_mhz` | MHz | Set frequency plus `freq_error_hz` |
 | `freq_error_hz` | Hz | `:MEASDig:ALLTx?` |
 | `vector_error_peak_pct` | % | `:MEASDig:ALLTx?` |
 | `vector_error_rms_pct` | % | `:MEASDig:ALLTx?` |
@@ -138,5 +139,5 @@ After that, `-m ber` works with no other changes. Keys ending in `_status` are u
 
 ## Known limits
 
-- `:MEASUre:TXFreq?` is documented as the analogue Tx frequency. It has not been checked in the digital TETRA modes.
+- `:MEASUre:TXFreq?` is invalid in the digital modes on the 2968, so the script reads the frequency set in the instrument's measurement settings instead. This read is optional: if the 2968 does not answer it, the script prints a warning to stderr and leaves the two frequency fields out. It has not been checked on hardware.
 - The script has not been run against real hardware yet.

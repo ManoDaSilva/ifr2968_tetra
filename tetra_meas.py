@@ -8,7 +8,7 @@ pyvisa-py), so this runs on Windows, Linux and a Raspberry Pi.
     pip install pyvisa pyvisa-py
 
 Command references are from docs/2965A_66A_67_68 Programming-2.pdf:
-    :MEASUre:TXFreq?   Tx frequency in MHz                        (p. 5-13)
+    :SYManual:TXfreq:Controlchan? / Trafficchan?  tuned Tx frequency  (p. 6-228)
     :MEASDig:ALLTx?    all TETRA digital Tx measurements          (p. 5-20)
 
 Add a measurement by appending a Measurement to MEASUREMENTS below.
@@ -16,6 +16,7 @@ Add a measurement by appending a Measurement to MEASUREMENTS below.
 import argparse
 import csv
 import json
+import re
 import sys
 import time
 from dataclasses import dataclass, field
@@ -40,10 +41,16 @@ class Measurement:
     query: str
     parse: Callable[[List[str]], Dict[str, object]]
     group: str = field(default="")
+    optional: bool = False  # if the query fails, warn and continue without it
 
 
-def _parse_txfreq(f):
-    return {"tx_frequency_mhz": float(f[0])}
+def _parse_tuned_freq(f):
+    # Reply looks like "SYM:TX:C 390MHZ" (header, then value with a unit suffix).
+    m = re.search(r"([0-9]+(?:\.[0-9]*)?)\s*([KMG]?)HZ\s*$", ",".join(f).upper())
+    if not m:
+        raise ValueError("cannot read frequency from %r" % f)
+    scale = {"": 1e-6, "K": 1e-3, "M": 1.0, "G": 1e3}[m.group(2)]
+    return {"tx_set_frequency_mhz": float(m.group(1)) * scale}
 
 
 def _parse_alltx(f):
@@ -76,13 +83,15 @@ def _parse_alltx(f):
 MEASUREMENTS: Dict[str, Measurement] = {
     m.name: m
     for m in [
-        Measurement("txfreq", ":MEASUre:TXFreq?", _parse_txfreq),
+        # Tuned Tx frequency. :MEASUre:TXFreq? is invalid in the digital modes.
+        Measurement("txfreq", ":SYManual:TXfreq:Controlchan?", _parse_tuned_freq, optional=True),
+        Measurement("txfreq_traffic", ":SYManual:TXfreq:Trafficchan?", _parse_tuned_freq, optional=True),
         Measurement("alltx", ":MEASDig:ALLTx?", _parse_alltx),
     ]
 }
 
 # Friendly selection for --measure. Each name expands to Measurement keys.
-DEFAULT_SET = ["txfreq", "alltx"]
+DEFAULT_SET = ["txfreq", "alltx"]  # use -m txfreq_traffic alltx on a traffic channel
 
 
 # --------------------------------------------------------------------------
@@ -154,12 +163,20 @@ def take_reading(inst, names, wait_settled=0.0, poll_s=0.5):
         m = MEASUREMENTS[n]
         deadline = time.monotonic() + wait_settled
         while True:
-            vals = inst.measure(m)
+            try:
+                vals = inst.measure(m)
+            except Exception as e:
+                if not m.optional:
+                    raise
+                print("skipping %s: %s" % (m.name, e), file=sys.stderr)
+                vals = {}
             settling = any(v == "settling" for k, v in vals.items() if k.endswith("_status"))
             if not settling or time.monotonic() >= deadline:
                 break
             time.sleep(poll_s)
         data.update(vals)
+    if "tx_set_frequency_mhz" in data and "freq_error_hz" in data:
+        data["tx_frequency_mhz"] = round(data["tx_set_frequency_mhz"] + data["freq_error_hz"] / 1e6, 6)
     return data
 
 
